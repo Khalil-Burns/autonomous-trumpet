@@ -1,2 +1,4 @@
 "./Src/main.o"
 "./Src/startup.o"
+"./Src/syscalls.o"
+"./Src/sysmem.o"

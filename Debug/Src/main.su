@@ -1,1 +1,11 @@
-../Src/main.c:33:5:main	16	static
+../Src/main.h:37:6:init_gpio_pin	16	static
+../Src/main.h:42:6:gpio_pin_high	16	static
+../Src/main.h:46:6:gpio_pin_low	16	static
+../Src/main.h:50:6:gpio_pin_toggle	16	static
+../Src/main.h:54:6:init_timing	4	static
+../Src/main.h:63:6:delay_s	24	static
+../Src/main.h:70:6:delay_ms	24	static
+../Src/main.h:77:6:delay_us	24	static
+../Src/main.c:9:6:init_pwm_pa5	4	static
+../Src/main.c:45:6:set_motor_speed	24	static
+../Src/main.c:55:5:main	8	static
