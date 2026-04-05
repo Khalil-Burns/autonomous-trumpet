@@ -59,6 +59,15 @@
 #define GPIOB_BASE (AHB1_BASE + GPIOB_OFFSET)
 #define GPIOB_P ((volatile gpio_reg_t*)(GPIOB_BASE))
 
+#define USART2_BASE     (0x40004400)
+#define USART2_SR_P     (*(volatile uint32_t*)(USART2_BASE + 0x00))
+#define USART2_DR_P     (*(volatile uint32_t*)(USART2_BASE + 0x04))
+#define USART2_BRR_P    (*(volatile uint32_t*)(USART2_BASE + 0x08))
+#define USART2_CR1_P    (*(volatile uint32_t*)(USART2_BASE + 0x0C))
+
+// Add to your RCC defines if not there
+#define RCC_APB1ENR_USART2EN (1 << 17)
+
 #define PA5 5
 #define PA6 6
 #define PA7 7
@@ -85,6 +94,51 @@ int valve_pins[VALVES][2] = {
     {VALVE_2_OUT1, VALVE_2_OUT2},
     {VALVE_3_OUT1, VALVE_3_OUT2}
 };
+
+void init_uart2(void) {
+    // 1. Enable USART2 Clock
+    RCC_P->RCC_APB1ENR |= RCC_APB1ENR_USART2EN;
+
+    // 2. Configure PA2 (TX) and PA3 (RX) for Alternate Function 7
+    // Note: Since you were using PA2/PA3 for other things, make sure they aren't 
+    // being reset elsewhere. UART2 MUST have these pins.
+    GPIOA_P->MODER &= ~((0x3 << (2*2)) | (0x3 << (3*2)));
+    GPIOA_P->MODER |=  ((0x2 << (2*2)) | (0x2 << (3*2)));
+    
+    // Set AF7 (0b0111) for both PA2 and PA3
+    GPIOA_P->AFRL &= ~((0xF << (2*4)) | (0xF << (3*4)));
+    GPIOA_P->AFRL |=  ((0x7 << (2*4)) | (0x7 << (3*4)));
+
+    // 3. Set Baud Rate
+    // 16,000,000 / (16 * baud_rate) = 104.166 -> 104 and 3 (0x683)
+    USART2_BRR_P = 0x0683;
+
+    // 4. Enable UART, Receiver, and Transmitter
+    USART2_CR1_P |= (1 << 13) | (1 << 2) | (1 << 3); 
+}
+
+// This function pauses the code until a key is pressed
+char uart_read_char(void) {
+    // Wait until RXNE (Read data register not empty) bit is set
+    while (!(USART2_SR_P & (1 << 5)));
+    return (char)(USART2_DR_P & 0xFF);
+}
+
+// Sends a single character
+void uart_write_char(char c) {
+    // 1. Wait until TXE (Transmit data register empty) bit is set (Bit 7)
+    while (!(USART2_SR_P & (1 << 7)));
+    
+    // 2. Write the character to the Data Register
+    USART2_DR_P = (c & 0xFF);
+}
+
+// Sends a null-terminated string
+void uart_write_string(const char* str) {
+    while (*str) {
+        uart_write_char(*str++);
+    }
+}
 
 void init_gpio_pin(gpio_reg_t* gpio, uint32_t pin) {
     gpio->MODER &= ~(0b11 << (pin * 2));
@@ -166,21 +220,6 @@ void delay_us(uint32_t us) {
     while ((DWT_CYCCNT_P - start) < cycles);
 }
 
-void init_tim2_pwm(void) {
-    // 1. Enable TIM2 clock on APB1 bus
-    RCC_P->RCC_APB1ENR = (1 << 0);
-
-    // 2. Configure TIM2 Frequency (1 kHz)
-    TIM2_PSC_P = 16 - 1;   // 1 MHz timer clock (1us per tick)
-    TIM2_ARR_P = 1000 - 1; // 1000 ticks = 1 ms period
-
-    init_tim2_pwm_ch1();
-    init_tim2_pwm_ch2();
-    init_tim2_pwm_ch3();
-
-    TIM2_CR1_P |= (1 << 0);
-}
-
 void init_tim2_pwm_ch1(void) {
     // 5. Configure TIM2 Channel 1 for PWM Mode 1
     // Clear OC1M (bits 6:4) and OC1PE (bit 3)
@@ -224,6 +263,21 @@ void init_tim2_pwm_ch3(void) {
 
     // 7. Start at 0
     TIM2_CCR3_P = 0;
+}
+
+void init_tim2_pwm(void) {
+    // 1. Enable TIM2 clock on APB1 bus
+    RCC_P->RCC_APB1ENR = (1 << 0);
+
+    // 2. Configure TIM2 Frequency (1 kHz)
+    TIM2_PSC_P = 16 - 1;   // 1 MHz timer clock (1us per tick)
+    TIM2_ARR_P = 1000 - 1; // 1000 ticks = 1 ms period
+
+    init_tim2_pwm_ch1();
+    init_tim2_pwm_ch2();
+    init_tim2_pwm_ch3();
+
+    TIM2_CR1_P |= (1 << 0);
 }
 
 void init_tim2_pwm_gpioa_pin(int pin) {
@@ -278,7 +332,12 @@ void set_valve(int valve_number, int state) {
     if (state == 1) {
         gpioa_pin_high(out1_pin);
         gpioa_pin_low(out2_pin);
-    } else {
+    } 
+    else if (state == -1) {
+        gpioa_pin_low(out1_pin);
+        gpioa_pin_high(out2_pin);
+    }
+    else {
         gpioa_pin_low(out1_pin);
         gpioa_pin_low(out2_pin);
     }
@@ -289,11 +348,19 @@ void set_valve(int valve_number, int state) {
 void play_note(const char* note) {
     for (int i = 0; i < VALVES; i++) {
         int state = note[i] - '0';
-        if (state == valve_states[i]) {
-            continue;
+        if (state == 0 && valve_states[i] == 1) {
+            set_valve(i, -1); // open valve
         }
-        set_valve(i, state);
     }
+    delay_ms(10);
+    // set_motor1_speed(MOTOR_SPEED);
+    for (int i = 0; i < VALVES; i++) {
+            int state = note[i] - '0';
+            if (state == valve_states[i]) {
+                continue;
+            }
+            set_valve(i, state);
+        }
 }
 
 #endif /* MAIN_H */

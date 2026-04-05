@@ -3,13 +3,14 @@
 #include "main.h"
 
 #define MOTOR_SPEED 450
-#define TRUMPET_TEMPO_MS 100  // 500ms per note (adjust as needed)
+#define TRUMPET_TEMPO_MS 150  // 500ms per note (adjust as needed)
 
 const char* bumblebee[] = {
 	Fs5, F5, E5, Ds5, E5, Ds5, D5, Cs5,
 	D5, Cs5, C5, B4, C5, B4, As4, A4,
 
 	As4, A4, Gs4, G4, Gs4, G4, Fs4, F4,
+    Fs4, F4, E4, Ds4, E4, Ds4, D4, Cs4,
 
     Fs4, F4, E4, Ds4, E4, Ds4, D4, Cs4,
 	Fs4, F4, E4, Ds4, E4, Ds4, D4, Cs4,
@@ -27,7 +28,21 @@ const char* bumblebee[] = {
     D4, Ds4, E4, F4, Fs4, G4, Fs4, F5,
 
 	Fs4, F4, E4, Ds4, E4, Ds4, D4, Cs4,
-	D4, Ds4, E4, F4, Fs4, G4, Fs4, F5,
+	D4, Ds4, E4, F4, Fs4, Gs4, A4, As4,
+
+    B4, As4, A4, Gs4, G4, C5, B4, As4,
+    B4, As4, A4, Gs4, G4, Gs4, A4, As4,
+    
+    B4, As4, A4, Gs4, G4, C5, B4, As4,
+    B4, As4, A4, Gs4, G4, Gs4, A4, As4,
+
+    B4, As4, A4, Gs4, A4, Gs4, G4, Fs4,
+    G4, Gs4, A4, As4, B4, C5, B4, As4, 
+
+    B4, As4, A4, Gs4, A4, Gs4, G4, Fs4,
+    G4, Gs4, A4, As4, B4, C5, B4, As4, 
+
+    B4
 };
 
 #define NUM_NOTES (sizeof(bumblebee) / sizeof(bumblebee[0]))
@@ -46,6 +61,8 @@ int main() {
     set_motor2_speed(MOTOR_SPEED);
     set_motor3_speed(MOTOR_SPEED);
 
+    init_uart2();
+
     init_gpioa_pin(PA4);
 	init_gpioa_pin(PA6);
 	init_gpioa_pin(PA7);
@@ -53,10 +70,22 @@ int main() {
 	init_gpioa_pin(PA9);
 	init_gpioa_pin(PA10);
 
+    uart_write_string("Initialization complete.\n");
+
 	while (1) {
         for (int i = 0; i < NUM_NOTES; i++) {
+            // play_note(bumblebee[i]);
+            // delay_ms(TRUMPET_TEMPO_MS);
+            uart_read_char(); 
+            uart_write_string("Playing note: ");
+            uart_write_string(bumblebee[i]);
+            uart_write_string("\n");
+
+            // THEN PLAY NOTE
             play_note(bumblebee[i]);
-            delay_ms(TRUMPET_TEMPO_MS);
+            
+            // You might want a very small delay for debouncing/mechanics
+//            delay_ms(10);
         }
     }
 }
