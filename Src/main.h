@@ -65,6 +65,14 @@
 #define USART2_BRR_P    (*(volatile uint32_t*)(USART2_BASE + 0x08))
 #define USART2_CR1_P    (*(volatile uint32_t*)(USART2_BASE + 0x0C))
 
+#define USART1_BASE     (0x40011000)
+#define USART1_SR_P     (*(volatile uint32_t*)(USART1_BASE + 0x00))
+#define USART1_DR_P     (*(volatile uint32_t*)(USART1_BASE + 0x04))
+#define USART1_BRR_P    (*(volatile uint32_t*)(USART1_BASE + 0x08))
+#define USART1_CR1_P    (*(volatile uint32_t*)(USART1_BASE + 0x0C))
+
+#define RCC_APB2ENR_USART1EN (1 << 4)
+
 // Add to your RCC defines if not there
 #define RCC_APB1ENR_USART2EN (1 << 17)
 
@@ -110,11 +118,27 @@ void init_uart2(void) {
     GPIOA_P->AFRL |=  ((0x7 << (2*4)) | (0x7 << (3*4)));
 
     // 3. Set Baud Rate
-    // 16,000,000 / (16 * baud_rate) = 104.166 -> 104 and 3 (0x683)
-    USART2_BRR_P = 0x0683;
+    USART2_BRR_P = 0x008B;
 
     // 4. Enable UART, Receiver, and Transmitter
     USART2_CR1_P |= (1 << 13) | (1 << 2) | (1 << 3); 
+}
+
+void init_uart1(void) {
+    // Enable clock
+    RCC_P->RCC_APB2ENR |= RCC_APB2ENR_USART1EN;
+
+    // Set PA9 (TX) and PA10 (RX) to AF7
+    GPIOA_P->MODER &= ~((0x3 << (9*2)) | (0x3 << (10*2)));
+    GPIOA_P->MODER |=  ((0x2 << (9*2)) | (0x2 << (10*2)));
+
+    GPIOA_P->AFRH &= ~((0xF << ((9-8)*4)) | (0xF << ((10-8)*4)));
+    GPIOA_P->AFRH |=  ((0x7 << ((9-8)*4)) | (0x7 << ((10-8)*4)));
+
+    // 256000 baud
+    USART1_BRR_P = 0x003E;
+
+    USART1_CR1_P |= (1 << 13) | (1 << 2) | (1 << 3);
 }
 
 // This function pauses the code until a key is pressed
@@ -131,6 +155,12 @@ void uart_write_char(char c) {
     
     // 2. Write the character to the Data Register
     USART2_DR_P = (c & 0xFF);
+}
+
+void uart_write_hex(uint8_t val) {
+    char hex[] = "0123456789ABCDEF";
+    uart_write_char(hex[(val >> 4) & 0xF]);
+    uart_write_char(hex[val & 0xF]);
 }
 
 // Sends a null-terminated string

@@ -1,91 +1,132 @@
 #include <stdint.h>
-
 #include "main.h"
 
-#define MOTOR_SPEED 450
-#define TRUMPET_TEMPO_MS 150  // 500ms per note (adjust as needed)
+#define FRAME_LEN 32   // enough for LD2450 frame
 
-const char* bumblebee[] = {
-	Fs5, F5, E5, Ds5, E5, Ds5, D5, Cs5,
-	D5, Cs5, C5, B4, C5, B4, As4, A4,
+uint8_t buffer[FRAME_LEN];
+int buf_index = 0;
 
-	As4, A4, Gs4, G4, Gs4, G4, Fs4, F4,
-    Fs4, F4, E4, Ds4, E4, Ds4, D4, Cs4,
+// Simple blocking read of one byte
+uint8_t uart_read_byte() {
+    while (!(USART2_SR_P & (1 << 5)));
+    return (uint8_t)(USART2_DR_P & 0xFF);
+}
 
-    Fs4, F4, E4, Ds4, E4, Ds4, D4, Cs4,
-	Fs4, F4, E4, Ds4, E4, Ds4, D4, Cs4,
+uint8_t uart1_read_byte() {
+    while (!(USART1_SR_P & (1 << 5)));
+    return (uint8_t)(USART1_DR_P & 0xFF);
+}
 
-	Fs4, F4, E4, Ds4, E4, Ds4, D4, Cs4,
-	Fs4, F4, E4, Ds4, E4, Ds4, D4, Cs4,
+// Print integer (quick + dirty)
+void uart_write_int(int val) {
+    char buf[16];
+    int i = 0;
 
-	Fs4, F4, E4, Ds4, D4, G4, Fs4, F4,
-	Fs4, F4, E4, Ds4, D4, Ds4, E4, F4,
+    if (val == 0) {
+        uart_write_char('0');
+        return;
+    }
 
-	Fs4, F4, E4, Ds4, D4, G4, Fs4, F4,
-	Fs4, F4, E4, Ds4, D4, Ds4, E4, F4,
+    if (val < 0) {
+        uart_write_char('-');
+        val = -val;
+    }
 
-	Fs4, F4, E4, Ds4, E4, Ds4, D4, Cs4,
-    D4, Ds4, E4, F4, Fs4, G4, Fs4, F5,
+    while (val > 0) {
+        buf[i++] = (val % 10) + '0';
+        val /= 10;
+    }
 
-	Fs4, F4, E4, Ds4, E4, Ds4, D4, Cs4,
-	D4, Ds4, E4, F4, Fs4, Gs4, A4, As4,
+    while (i--) {
+        uart_write_char(buf[i]);
+    }
+}
 
-    B4, As4, A4, Gs4, G4, C5, B4, As4,
-    B4, As4, A4, Gs4, G4, Gs4, A4, As4,
-    
-    B4, As4, A4, Gs4, G4, C5, B4, As4,
-    B4, As4, A4, Gs4, G4, Gs4, A4, As4,
+void parse_target(uint8_t* data, int index) {
+    // 1. Combine bytes (Little Endian)
+    uint16_t x_raw = data[0] | (data[1] << 8);
+    uint16_t y_raw = data[2] | (data[3] << 8);
+    uint16_t speed_raw = data[4] | (data[5] << 8);
+    // data[6] and data[7] are 'Resolution', we will skip them to save time
 
-    B4, As4, A4, Gs4, A4, Gs4, G4, Fs4,
-    G4, Gs4, A4, As4, B4, C5, B4, As4, 
+    // 2. Handle the LD2450 Sign Bit (Bit 15)
+    // If bit 15 is 1, the value is negative.
+    int16_t x = (x_raw & 0x8000) ? -(int16_t)(x_raw & 0x7FFF) : (int16_t)x_raw;
+    int16_t y = (y_raw & 0x8000) ? -(int16_t)(y_raw & 0x7FFF) : (int16_t)y_raw;
+    int16_t speed = (speed_raw & 0x8000) ? -(int16_t)(speed_raw & 0x7FFF) : (int16_t)speed_raw;
 
-    B4, As4, A4, Gs4, A4, Gs4, G4, Fs4,
-    G4, Gs4, A4, As4, B4, C5, B4, As4, 
+    // 3. Only print if the target is actually active (Y > 0)
+    // This prevents the "All 0s" spam when no one is there
+    if (y == 0 && x == 0) return;
 
-    B4
-};
+    uart_write_string("T");
+    uart_write_int(index);
+    uart_write_string(" X:");
+    uart_write_int(x);
+    uart_write_string(" Y:");
+    uart_write_int(y);
+    uart_write_string(" S:");
+    uart_write_int(speed);
+    uart_write_string("\r\n");
+}
 
-#define NUM_NOTES (sizeof(bumblebee) / sizeof(bumblebee[0]))
+// Try to parse a full frame
+void process_frame(uint8_t* frame) {
+    uart_write_string("\r\n--- FRAME ---\r\n");
+
+    // Targets start after header (4 bytes)
+    uint8_t* data = &frame[4];
+
+    // Each target = 8 bytes
+    for (int i = 0; i < 3; i++) {
+        parse_target(&data[i * 8], i);
+    }
+
+    uart_write_string("-------------\r\n");
+}
+
+void print_frame(uint8_t* frame, int len) {
+    uart_write_string("\r\nFRAME: ");
+
+    for (int i = 0; i < len; i++) {
+        uart_write_string("0x");
+        uart_write_int(frame[i]);
+        uart_write_string(" ");
+    }
+
+    uart_write_string("\r\n");
+}
 
 int main() {
-	init_timing();
+    init_timing();
 
-	RCC_P->RCC_AHB1ENR |= (1 << 0);
+    // Enable GPIO + UART
+    RCC_P->RCC_AHB1ENR |= (1 << 0);
     RCC_P->RCC_AHB1ENR |= (1 << 1);
 
-    init_tim2_pwm();
-	init_tim2_pwm_gpioa_pin(PA5);
-	init_tim2_pwm_gpioa_pin(PA1);
-    init_tim2_pwm_gpiob_pin(PB10);
-    set_motor1_speed(MOTOR_SPEED);
-    set_motor2_speed(MOTOR_SPEED);
-    set_motor3_speed(MOTOR_SPEED);
-
     init_uart2();
+    init_uart1();
 
-    init_gpioa_pin(PA4);
-	init_gpioa_pin(PA6);
-	init_gpioa_pin(PA7);
-	init_gpioa_pin(PA8);
-	init_gpioa_pin(PA9);
-	init_gpioa_pin(PA10);
+    uart_write_string("LD2450 Reader Started\r\n");
 
-    uart_write_string("Initialization complete.\n");
+    while (1) {
+        if (uart1_read_byte() == 0xAA) {
+            if (uart1_read_byte() == 0xFF) {
+                if (uart1_read_byte() == 0x03) {
+                    if (uart1_read_byte() == 0x00) {
 
-	while (1) {
-        for (int i = 0; i < NUM_NOTES; i++) {
-            // play_note(bumblebee[i]);
-            // delay_ms(TRUMPET_TEMPO_MS);
-            uart_read_char(); 
-            uart_write_string("Playing note: ");
-            uart_write_string(bumblebee[i]);
-            uart_write_string("\n");
+                        // Read exactly 26 bytes (24 for targets + 2 for footer)
+                        for (int i = 0; i < 26; i++) {
+                            buffer[i] = uart1_read_byte();
+                        }
 
-            // THEN PLAY NOTE
-            play_note(bumblebee[i]);
-            
-            // You might want a very small delay for debouncing/mechanics
-//            delay_ms(10);
+                        // Process the 3 targets stored in buffer[0...23]
+                        for (int i = 0; i < 3; i++) {
+                            parse_target(&buffer[i * 8], i + 1);
+                        }
+                    }
+                }
+            }
         }
     }
 }
