@@ -4,6 +4,9 @@ This is the code for an automated trumpet project. It's written in C and built t
 
 Right now, the main focus is on motor control (check out the `motors` branch and launch files). 
 
+# Demo
+<video src="automatic_trumpet_demo.mp4" controls="controls" width="600" />
+
 ## Hardware
 * STM32 Nucleo-F401RE development board
 * Motors and drivers (needs updating with exact parts used)
