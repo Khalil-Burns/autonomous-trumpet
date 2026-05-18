@@ -5,7 +5,7 @@ This is the code for an automated trumpet project. It's written in C and built t
 Right now, the main focus is on motor control (check out the `motors` branch and launch files). 
 
 ## System Requirements
-This system must physically actuate standard 18mm trumpet valves at frequencies up to 12 Hz with a 0% failure rate. The electronics and firmware require an STM32 MCU capable of low-latency, multi-motor timing and processing real-time note sequencing via UART.
+This system must physically actuate standard 18mm trumpet valves at frequencies up to 12 Hz. The electronics and firmware require an STM32 MCU capable of low-latency, multi-motor timing and processing real-time note sequencing via UART.
 
 ## Demo
 https://github.com/user-attachments/assets/e8e194a6-651d-4421-bd73-05808591c485
