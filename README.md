@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/e8e194a6-651d-4421-bd73-05808591c485
 
 ## Hardware
 * STM32 Nucleo-F401RE development board
-* Motors and drivers (needs updating with exact parts used)
+* Motors and drivers (L298N drivers, Broleo 24V DC motors)
 
 ## How to use it
 This project was set up using STM32CubeIDE.
